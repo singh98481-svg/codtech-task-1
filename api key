@@ -1,0 +1,172 @@
+import requests
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from datetime import datetime
+
+# Apni OpenWeatherMap API key yahaan daalein
+API_KEY = "244852f96c311d56536ac137e50e8a83"  # <-- IMPORTANT: Yahaan apni actual API key daalein
+BASE_URL = "http://api.openweathermap.org/data/2.5/"
+
+def get_current_weather(city_name):
+    """Ek sheher ka current weather data fetch karta hai."""
+    url = f"{BASE_URL}weather?q={city_name}&appid={API_KEY}&units=metric" # units=metric for Celsius
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # HTTP errors ke liye exception raise karega
+        return response.json()
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        if response.status_code == 401:
+            print("Error: Invalid API Key. Please check your API_KEY in the script.")
+        elif response.status_code == 404:
+            print(f"Error: City '{city_name}' not found.")
+        else:
+            print(f"Error: {response.json().get('message', 'Could not retrieve data.')}")
+    except requests.exceptions.RequestException as req_err:
+        print(f"Request error occurred: {req_err}")
+    return None
+
+def get_forecast_weather(city_name, days=5):
+    """Ek sheher ka forecast weather data fetch karta hai (har 3 ghante ka data)."""
+    # Note: Free tier OpenWeatherMap forecast API gives 3-hour forecast for 5 days
+    url = f"{BASE_URL}forecast?q={city_name}&appid={API_KEY}&units=metric&cnt={days*8}" # 8 data points per day (3*8=24 hours)
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred during forecast fetch: {http_err}")
+        if response.status_code == 401:
+            print("Error: Invalid API Key. Please check your API_KEY in the script.")
+        elif response.status_code == 404:
+            print(f"Error: City '{city_name}' not found for forecast.")
+        else:
+            print(f"Error: {response.json().get('message', 'Could not retrieve forecast data.')}")
+    except requests.exceptions.RequestException as req_err:
+        print(f"Request error occurred during forecast fetch: {req_err}")
+    return None
+
+def visualize_current_weather(data, city_name):
+    """Current weather data ko visualize karta hai."""
+    if not data:
+        print("No data to visualize for current weather.")
+        return
+
+    temp = data['main']['temp']
+    feels_like = data['main']['feels_like']
+    humidity = data['main']['humidity']
+    wind_speed = data['wind']['speed']
+    description = data['weather'][0]['description']
+    pressure = data['main']['pressure']
+
+    print(f"\n--- Current Weather in {city_name.title()} ---")
+    print(f"Temperature: {temp}°C")
+    print(f"Feels Like: {feels_like}°C")
+    print(f"Humidity: {humidity}%")
+    print(f"Wind Speed: {wind_speed} m/s")
+    print(f"Pressure: {pressure} hPa")
+    print(f"Description: {description.title()}")
+
+    # Visualization
+    # 1. Bar chart for Temperature, Feels Like, Humidity
+    labels = ['Temperature (°C)', 'Feels Like (°C)', 'Humidity (%)']
+    values = [temp, feels_like, humidity]
+
+    plt.figure(figsize=(12, 6)) # Dashboard ke liye figure size
+
+    plt.subplot(1, 2, 1) # Pehla plot (1 row, 2 columns, 1st plot)
+    sns.barplot(x=labels, y=values, palette="viridis")
+    plt.title(f'Current Weather Metrics in {city_name.title()}')
+    plt.ylabel('Value')
+    for index, value in enumerate(values):
+        plt.text(index, value + 0.5, str(value), ha='center', va='bottom')
+
+
+    # 2. Textual summary (part of the "dashboard" idea)
+    # Isko plot mein bhi add kar sakte hain ya alag se print kar sakte hain.
+    # Humne upar print kar diya hai. Yahaan ek aur plot bana sakte hain.
+    # Example: Wind Speed and Pressure Gauge (simplistic bar)
+    plt.subplot(1, 2, 2) # Doosra plot (1 row, 2 columns, 2nd plot)
+    other_metrics_labels = ['Wind Speed (m/s)', 'Pressure (hPa)']
+    other_metrics_values = [wind_speed, pressure]
+    sns.barplot(x=other_metrics_labels, y=other_metrics_values, palette="mako")
+    plt.title(f'Other Metrics in {city_name.title()}')
+    plt.ylabel('Value')
+    for index, value in enumerate(other_metrics_values):
+        plt.text(index, value + 0.5, str(value), ha='center', va='bottom')
+
+    plt.suptitle(f"Weather Dashboard for {city_name.title()}", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust layout to make space for suptitle
+    plt.savefig(f"{city_name}_current_weather_dashboard.png")
+    print(f"\nCurrent weather dashboard saved as {city_name}_current_weather_dashboard.png")
+    plt.show()
+
+def visualize_forecast_weather(data, city_name):
+    """Forecast weather data ko visualize karta hai."""
+    if not data or 'list' not in data:
+        print("No data to visualize for forecast.")
+        return
+
+    forecast_list = data['list']
+    # Extracting relevant data for plotting
+    dates = []
+    temps = []
+    humidity_forecast = []
+
+    for item in forecast_list:
+        dates.append(datetime.fromtimestamp(item['dt']))
+        temps.append(item['main']['temp'])
+        humidity_forecast.append(item['main']['humidity'])
+
+    df = pd.DataFrame({'Time': dates, 'Temperature (°C)': temps, 'Humidity (%)': humidity_forecast})
+
+    print(f"\n--- 5-Day Weather Forecast for {city_name.title()} ---")
+    # Print a summary of the forecast (e.g., daily average or min/max if desired)
+    # For simplicity, we'll just plot the 3-hourly data.
+    print(df.head()) # Print first few forecast entries
+
+    plt.figure(figsize=(15, 7))
+
+    # Temperature Forecast
+    plt.subplot(1, 2, 1)
+    sns.lineplot(x='Time', y='Temperature (°C)', data=df, marker='o', color='coral')
+    plt.title(f'Temperature Forecast for {city_name.title()}')
+    plt.xlabel('Date and Time')
+    plt.ylabel('Temperature (°C)')
+    plt.xticks(rotation=45)
+    plt.grid(True)
+
+    # Humidity Forecast
+    plt.subplot(1, 2, 2)
+    sns.lineplot(x='Time', y='Humidity (%)', data=df, marker='o', color='skyblue')
+    plt.title(f'Humidity Forecast for {city_name.title()}')
+    plt.xlabel('Date and Time')
+    plt.ylabel('Humidity (%)')
+    plt.xticks(rotation=45)
+    plt.grid(True)
+
+    plt.suptitle(f"5-Day Weather Forecast Dashboard for {city_name.title()}", fontsize=16)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(f"{city_name}_forecast_dashboard.png")
+    print(f"\nForecast dashboard saved as {city_name}_forecast_dashboard.png")
+    plt.show()
+
+
+if __name__ == "__main__":
+    if API_KEY == "YOUR_API_KEY":
+        print("Error: Please replace 'YOUR_API_KEY' with your actual OpenWeatherMap API key in the script.")
+    else:
+        city = input("Enter city name: ")
+
+        # Current Weather
+        current_weather_data = get_current_weather(city)
+        if current_weather_data:
+            visualize_current_weather(current_weather_data, city)
+
+        # Forecast Weather
+        forecast_data = get_forecast_weather(city)
+        if forecast_data:
+            visualize_forecast_weather(forecast_data, city)
+
+        print("\nTask 1 processing complete.")
